@@ -109,15 +109,22 @@ public final class Publisher extends Task {
     
     /** The date time format. */
     private static final String DATE_TIME_FORMAT = "yyyy-MMM-dd HH:mm:ss";
+    /** The uploaded file time format. */
+    private static final String FILE_NAME_TIMESTAMP_FORMAT = "dd-MMM-yyyy--HH-mm-ss";
     /** The format of log-message. */
     private static final String DRIVE_LOG_MESSAGE_FORMAT =
-            "File %s was successfull uploaded. File ID: %s";
+            "%s uploaded. File ID: %s";
+    /** The format of log-message. */
+    @SuppressWarnings("unused")
+    private static final String DRIVE_LOG_MESSAGE_FORMAT_2 =
+            "%s updated. File ID: %s";
+
     /** The format of log-message. */
     private static final String SKYPE_LOG_MESSAGE_FORMAT =
-            "Skype was successfull sent on %s";
+            "Link was sent on %s";
 
     /** The upload file arguments. */
-    private String mFileName, mDescription, mTimeStamp, mClientSecretFile, mFolderId;
+    private String mFileName, mDescription, mClientSecretFile, mFolderId;
     /** The send notification arguments. */
     private String mLogin, mPassword, mUserName, mMessage;
 
@@ -129,7 +136,6 @@ public final class Publisher extends Task {
      *
      * @param fileName          the name of file (<i>Required</i>)
      * @param description       file description (<i>Required</i>)
-     * @param timeStamp         timestamp, created/modified (<i>Required</i>)
      * @param clientSecretFile  app client secret credentials file (<i>Required</i>)
      * @param folderId          parent folder id (<i>Not Required</i>)
      * @param login             your skype-login
@@ -137,12 +143,11 @@ public final class Publisher extends Task {
      * @param userName          your skype-friend
      * @param message           your message
      */
-    public Publisher(String fileName, String description, String timeStamp,
+    public Publisher(String fileName, String description,
             String clientSecretFile, String folderId, String login, String password,
             String userName, String message) {
         mFileName = fileName;
         mDescription = description;
-        mTimeStamp = timeStamp;
         mFolderId = folderId;
         mClientSecretFile = clientSecretFile;
         mLogin = login;
@@ -157,9 +162,6 @@ public final class Publisher extends Task {
     /** @param description to set {@link #mDescription} */
     @SuppressWarnings("javadoc")
     public void setDescription(String description) {mDescription = description;}
-    /** @param timeStamp to set {@link #mTimeStamp} */
-    @SuppressWarnings("javadoc")
-    public void setTimeStamp(String timeStamp) {mTimeStamp = timeStamp;}
     /** @param clientSecretFile to set {@link #mClientSecretFile} */
     @SuppressWarnings("javadoc")
     public void setClientSecretFile(String clientSecretFile) {mClientSecretFile = clientSecretFile;}
@@ -185,25 +187,25 @@ public final class Publisher extends Task {
      * @param args arguments
      */
     public static final void main(String[] args) {
-        String fileName = null, description = null, timeStamp = null,
+        String fileName = null, description = null,
                 clientSecretFile = null, folderId = null, login = null, password = null,
                 userName = null, message = null;
+        
         for (int i = 0; i < args.length; i++)
             switch (i) {
                 case 0: fileName            = args[i]; break;
                 case 1: description         = args[i]; break;
-                case 2: timeStamp           = args[i]; break;
-                case 3: clientSecretFile    = args[i]; break;
-                case 4: folderId            = args[i]; break;
-                case 5: login               = args[i]; break;
-                case 6: password            = args[i]; break;
-                case 7: userName            = args[i]; break;
-                case 8: message             = args[i]; break;
+                case 2: clientSecretFile    = args[i]; break;
+                case 3: folderId            = args[i]; break;
+                case 4: login               = args[i]; break;
+                case 5: password            = args[i]; break;
+                case 6: userName            = args[i]; break;
+                case 7: message             = args[i]; break;
                 default: break;
             }
         
-        final Publisher publisher = new Publisher(fileName, description, timeStamp,
-                clientSecretFile, folderId, login, password, userName, message);
+        final Publisher publisher = new Publisher(fileName, description, clientSecretFile,
+                folderId, login, password, userName, message);
         publisher.execute();
     }
     
@@ -213,12 +215,16 @@ public final class Publisher extends Task {
         final Locale locale = Locale.ENGLISH;
         String fileId = null;
         
+        Drive service = null;
+        
         if (mFileName != null && !mFileName.isEmpty() &&
             mDescription != null && !mDescription.isEmpty() &&
-            mTimeStamp != null && !mTimeStamp.isEmpty() &&
             mClientSecretFile != null && !mClientSecretFile.isEmpty()) {
-                fileId = uploadFile(mFileName, mDescription, mTimeStamp,
-                        mClientSecretFile, mFolderId);
+                
+                // Build a new authorized API client service.
+                service = getDriveService(mClientSecretFile);
+                if (service != null)
+                    fileId = uploadFile(service, mFileName, mDescription, mFolderId);
                 if (fileId != null && !fileId.isEmpty()) {
                     log(String.format(locale, DRIVE_LOG_MESSAGE_FORMAT, mFileName, fileId));
                     message = message + String.format(locale, SKYPE_NOTIFICATION_LINK_FORMAT, fileId);
@@ -227,9 +233,11 @@ public final class Publisher extends Task {
         
         if (mLogin != null && !mLogin.isEmpty() &&
                 mPassword != null && !mPassword.isEmpty() &&
-                mUserName != null && !mUserName.isEmpty()) {
+                mUserName != null && !mUserName.isEmpty() && service != null) {
             final long sentTime = send(mLogin, mPassword, mUserName, message);
             if (sentTime != -1) {
+                updateFile(service, mFileName, fileId, sentTime);
+                //log(String.format(locale, DRIVE_LOG_MESSAGE_FORMAT_2, mFileName, updatedFileId));
                 final String dateTime = new SimpleDateFormat(DATE_TIME_FORMAT, locale)
                         .format(sentTime);        
                 log(String.format(locale, SKYPE_LOG_MESSAGE_FORMAT, dateTime));
@@ -238,28 +246,6 @@ public final class Publisher extends Task {
         
     }
     
-    /**
-     * Upload file to Google Drive
-     * 
-     * @param fileName          the name of file (<i>Required</i>)
-     * @param description       file description (<i>Required</i>)
-     * @param timeStamp         timestamp, created/modified (<i>Required</i>)
-     * @param clientSecretFile  app client secret credentials file (<i>Required</i>)
-     * @param folderId   parent folder id (<i>Not Required</i>)
-     * @return Id of inserted file metadata if successful, {@code null} otherwise.
-     */
-    public static final String uploadFile(String fileName, String description,
-            String timeStamp, String clientSecretFile, String folderId) {
-        String result = null;
-        
-        // Build a new authorized API client service.
-        final Drive service = getDriveService(clientSecretFile);
-        
-        if (service != null)
-            result = uploadFile(service, fileName, description, timeStamp, folderId);
-    
-        return result;
-    }
     
     /**
      * Build and return an authorized Drive client service.
@@ -338,10 +324,10 @@ public final class Publisher extends Task {
      * @return Id of inserted file metadata if successful, {@code null} otherwise.
      */
     private static final String uploadFile(Drive service,
-            String fileName, String description, String timeStamp, String folderId) {
+            String fileName, String description, String folderId) {
         String result = null;
         
-        final DateTime dateTime = new DateTime(new Date(Long.parseLong(timeStamp)), TIME_ZONE);
+        final DateTime dateTime = new DateTime(System.currentTimeMillis());
         
         // File's metadata.
         File body = new File()
@@ -364,6 +350,36 @@ public final class Publisher extends Task {
         return result;
     }
     
+    /**
+     * Update file.
+     * 
+     * @param service Google Drive Service-Instance
+     * 
+     * @return Id of inserted file metadata if successful, {@code null} otherwise.
+     */
+    private static final String updateFile(Drive service, String oldName,
+            String fileId, long timeStamp) {
+        String result = null;
+        
+        final Date javaDate = new Date(timeStamp);
+        final DateTime dateTime = new DateTime(javaDate, TIME_ZONE);
+        final String dateTimePreffix = new SimpleDateFormat(FILE_NAME_TIMESTAMP_FORMAT,
+                Locale.ENGLISH).format(javaDate) + ".zip";
+        final String fileName = oldName.replace(".zip", dateTimePreffix);
+        
+        // File's metadata.
+        File body = new File()
+                .setName(fileName)
+                //.setCreatedTime(dateTime)
+                .setModifiedTime(dateTime);
+       
+        File file = null;
+        try {file = service.files().update(fileId, body).execute();}
+        catch (IOException e) {e.printStackTrace();}
+        if (file != null) result = file.getId();
+        return result;
+    }
+
     /**
      * Send Skype Message.
      * 
