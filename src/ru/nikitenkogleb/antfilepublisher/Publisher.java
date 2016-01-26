@@ -328,10 +328,12 @@ public final class Publisher extends Task {
         String result = null;
         
         final DateTime dateTime = new DateTime(System.currentTimeMillis());
+        // File's content.
+        final java.io.File fileContent = new java.io.File(fileName);
         
         // File's metadata.
         File body = new File()
-                .setName(fileName)
+                .setName(fileContent.getName())
                 .setDescription(description)
                 .setMimeType(MIME_TYPE)
                 .setCreatedTime(dateTime)
@@ -340,8 +342,6 @@ public final class Publisher extends Task {
         if (folderId != null && !folderId.isEmpty())
             body.setParents(Arrays.asList(new String[] {folderId}));
        
-        // File's content.
-        final java.io.File fileContent = new java.io.File(fileName);
         final FileContent mediaContent = new FileContent(MIME_TYPE, fileContent);
         File file = null;
         try {file = service.files().create(body, mediaContent).execute();}
@@ -365,7 +365,8 @@ public final class Publisher extends Task {
         final DateTime dateTime = new DateTime(javaDate, TIME_ZONE);
         final String dateTimePreffix = new SimpleDateFormat(FILE_NAME_TIMESTAMP_FORMAT,
                 Locale.ENGLISH).format(javaDate) + ".zip";
-        final String fileName = oldName.replace(".zip", dateTimePreffix);
+        final String fileName = new java.io.File(oldName).getName()
+                .replace(".zip", dateTimePreffix);
         
         // File's metadata.
         File body = new File()
