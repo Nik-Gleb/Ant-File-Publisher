@@ -127,6 +127,8 @@ public final class Publisher extends Task {
     private String mFileName, mDescription, mClientSecretFile, mFolderId;
     /** The send notification arguments. */
     private String mLogin, mPassword, mUserName, mMessage;
+    
+    private static boolean myBool = false;
 
     /** Constructs a new Publisher by default. */
     public Publisher() {}
@@ -211,6 +213,8 @@ public final class Publisher extends Task {
     
     /** {@inheritDoc} */
     public final void execute() {
+        log("Instance " + myBool);
+        myBool = true;
         String message = mMessage;
         final Locale locale = Locale.ENGLISH;
         String fileId = null;
